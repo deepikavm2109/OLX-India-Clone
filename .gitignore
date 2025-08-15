@@ -1,0 +1,26 @@
+# Python / Django
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venvolx/
+.env
+
+# Node / React
+node_modules/
+build/
+
+# Ignore old or unused frontend folders
+mmfrontend/
+New folder/
+olx/
+word_olx_final/
+word_olx1
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
+.idea/

@@ -1,0 +1,714 @@
+import axios from "axios";
+import React, { useEffect, useState } from "react";
+import { Button, Col, Form, Row } from "react-bootstrap";
+import "../style/Forms.css";
+import olximg from "../../images/avatar_2.png";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { FaCamera } from "react-icons/fa";
+import { TbCameraPlus } from "react-icons/tb";
+
+const Jobs = () => {
+  const [formData, setFormData] = useState({
+    category: "",
+    subcategory: "",
+    jobSalaryPeriod:"",
+    jobPositionType:"",
+    jobSalaryFrom:"",
+    jobSalaryTo:"",
+    jobTitle: "",
+    jobDescription: "",
+    jobPhotos: [],
+    jobState: "",
+    username: "",
+    email: "",
+  });
+
+  const [states, setStates] = useState([]);
+  const [profileDetails, setProfileDetails] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previewUrls, setPreviewUrls] = useState([]);
+  const [olxImage, setOlxImage] = useState(olximg);
+  const [selectedImage, setSelectedImage] = useState(null);
+
+  const [errors, setErrors] = useState({});
+  const [isSubmit, setIsSubmit] = useState(false);
+
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const category = params.get("category");
+
+  const subcategory = params.get("subcategory");
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.jobSalaryPeriod) {
+      newErrors.jobSalaryPeriod = "Period is mandatory";
+    }
+    if (!formData.jobPositionType) {
+      newErrors.jobPositionType = "Position type is mandatory";
+    }
+
+    
+    if (!formData.jobSalaryFrom) {
+      newErrors.jobSalaryFrom = "Minimum Salary is mandatory";
+    }
+    // if (!formData.jobSalaryTo) {
+    //     newErrors.jobSalaryTo = "Maximum salary is mandatory";
+    //   } else if (formData.jobSalaryFrom > formData.jobSalaryTo) {
+    //     newErrors.jobSalaryTo = "Minimum salary should be greater than maximum salary";
+    //   }
+
+      if (!formData.jobSalaryTo) {
+        newErrors.jobSalaryTo = "Maximum salary is mandatory";
+      } else if (Number(formData.jobSalaryFrom) > Number(formData.jobSalaryTo)) {
+        newErrors.jobSalaryTo = "Minimum salary should be less than or equal to maximum salary";
+      }
+    if (!formData.jobTitle) {
+      newErrors.jobTitle = "Ad Title is mandatory";
+    }
+    if (!formData.jobDescription) {
+      newErrors.jobDescription = "Description is mandatory";
+    }
+
+    if (!formData.jobState) {
+      newErrors.jobState = "State is mandatory";
+    }
+
+    if (formData.jobPhotos.length === 0) {
+      newErrors.jobPhotos = "Atleast one image is mandatory";
+    }
+
+    return newErrors;
+  };
+
+ 
+  const jobSalaryPeriod = ["Hourly", "Monthly", "Weekly", "Yearly"];
+  const jobPositionType = [
+    "Contract",
+    "Full-time",
+    "Part-time",
+    "Temporary",
+  ];
+
+  const StateDropdown = async () => {
+    try {
+      const fetchStateResponse = await axios.get("/olxapi/statelist/");
+      setStates(fetchStateResponse.data);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const isTokenExpired = (token) => {
+    const decodedToken = JSON.parse(atob(token.split(".")[1]));
+    const currentTime = Date.now() / 1000; // in seconds
+    return decodedToken.exp < currentTime;
+  };
+
+  const fetchProfile = async () => {
+    try {
+      let tokens = JSON.parse(localStorage.getItem("tokens"));
+      let accessToken = tokens?.access;
+
+      // Refresh token if access token is expired
+      if (isTokenExpired(accessToken)) {
+        const refreshToken = tokens?.refresh;
+        console.log("refresh token: ", refreshToken);
+        const response = await axios.post(
+          "http://127.0.0.1:8000/olxapi/token/refresh/",
+          { refresh: refreshToken }
+        );
+        accessToken = response.data.access;
+        localStorage.setItem(
+          "tokens",
+          JSON.stringify({ ...tokens, access: accessToken })
+        );
+      }
+
+      const profileResponse = await axios.get(
+        "http://127.0.0.1:8000/olxapi/profile/",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      setProfileDetails(profileResponse.data);
+
+      // Update formData with the fetched username and email
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        category: category || "", // Set category from URL if available
+        subcategory: subcategory || "", // Set subcategory from URL if available
+        username: profileResponse.data.username || "",
+        email: profileResponse.data.email || "",
+      }));
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useEffect(() => {
+    StateDropdown();
+    fetchProfile();
+  }, []);
+
+  const handleFileChange = (event) => {
+    const files = Array.from(event.target.files);
+    console.log("files", files);
+    setSelectedFiles(files);
+    const urls = files.map((file) => URL.createObjectURL(file));
+    console.log("urls", urls);
+    setPreviewUrls(urls);
+
+    setFormData({
+      ...formData,
+      // profile_image: e.target.files[0], #single
+      jobPhotos: files,
+    });
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const newImageUrl = URL.createObjectURL(file);
+      setSelectedImage(newImageUrl); // Set the uploaded image for the profile
+      setFormData({
+        ...formData,
+        // profile_image: e.target.files[0], #single
+        profile_image: file,
+      });
+    }
+  };
+
+  const handleSubmit = async(e) => {
+    e.preventDefault();
+    const formErrors = validateForm();
+    if (Object.keys(formErrors).length === 0) {
+      const uploadData = new FormData();
+      uploadData.append("category", formData.category);
+      uploadData.append("subcategory", formData.subcategory);
+      uploadData.append("jobSalaryPeriod", formData.jobSalaryPeriod);
+      uploadData.append("jobPositionType", formData.jobPositionType);
+      uploadData.append("jobSalaryFrom", formData.jobSalaryFrom);
+      uploadData.append("jobSalaryTo", formData.jobSalaryTo);
+      uploadData.append("jobTitle", formData.jobTitle);
+      uploadData.append("jobDescription", formData.jobDescription);
+      uploadData.append("jobState", formData.jobState);
+      uploadData.append("username", formData.username);
+      uploadData.append("email", formData.email);
+      // uploadData.append("jobPhotos",formData.jobPhotos);
+      // for single photos
+
+      formData.jobPhotos.forEach((image, index) => {
+        uploadData.append(`jobPhotos[${index}]`, image);
+      });
+      
+      // Log the FormData content to check
+      for (const pair of uploadData.entries()) {
+        console.log(pair[0], pair[1]);
+      }
+      setIsSubmit(true);
+
+      try {
+        let tokens = JSON.parse(localStorage.getItem("tokens"));
+        let accessToken = tokens?.access;
+  
+        if (isTokenExpired(accessToken)) {
+          const refreshToken = tokens?.refresh;
+          const response = await axios.post(
+            "http://127.0.0.1:8000/olxapi/token/refresh/",
+            { refresh: refreshToken }
+          );
+          accessToken = response.data.access;
+          localStorage.setItem(
+            "tokens",
+            JSON.stringify({ ...tokens, access: accessToken })
+          );
+        }
+  
+        // Send the POST request with the access token in headers
+        const response = await axios.post(
+          "http://127.0.0.1:8000/olxapi/jobform/",
+          uploadData,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+  
+        console.log("job Data successfully posted:", response.data);
+        // Clear the form and errors after successful submission
+        setFormData({
+          category: "",
+    subcategory: "",
+          jobSalaryPeriod: "",
+          jobPositionType: "",
+          jobSalaryFrom: "",
+          jobSalaryTo: "",
+          jobTitle: "",
+          jobDescription: "",
+          jobPhotos: [],
+          jobState: "",
+          username: "",
+          email: "",
+        });
+        setErrors({});
+        setIsSubmit(true);
+      } catch (error) {
+        console.error("Error uploading data:", error);
+      }
+    } else {
+      setErrors(formErrors);
+      console.log(formErrors);
+    }
+  };
+  
+
+  return (
+    <>
+      <pre>
+        {JSON.stringify(
+          {
+            category: formData.category,
+            subcategory: formData.subcategory,
+            jobSalaryPeriod: formData.jobSalaryPeriod,
+            jobPositionType: formData.jobPositionType,
+            jobSalaryFrom: formData.jobSalaryFrom,
+            jobSalaryTo: formData.jobSalaryTo,
+            jobTitle: formData.jobTitle,
+            jobDescription: formData.jobDescription,
+            jobState: formData.jobState,
+            jobPhotos: formData.jobPhotos,
+            username:formData.username,
+            email:formData.email,
+            // profile_image:profileDetails.profileImage,
+            // username: profileDetails.profileUsername,
+            // email: profileDetails.profileEmailId,
+          },
+          undefined,
+          2
+        )}
+      </pre>
+
+      <form className="form-title" onSubmit={handleSubmit}>
+        <div className="form-div">
+          <span>
+            {category}/{subcategory}
+          </span>
+          <Link className="form-link" to={"/post"}>
+            Change
+          </Link>
+        </div>
+        <h2>Include some details</h2>
+
+        <div className="form-div">
+          <Form.Label className="form-input-button form-field d-block">
+            Salary period *
+          </Form.Label>
+          {jobSalaryPeriod.map((period) => (
+            <Button
+              key={period}
+              className={`form-input-button-type ${
+                formData.jobSalaryPeriod === period ? "selected" : ""
+              }`}
+              onClick={() => {
+                setFormData({ ...formData, jobSalaryPeriod : period});
+                // setSelectedButton(fuelData.name); // Update selected transmission to change the color
+              }}
+            >
+              {period}
+            </Button>
+          ))}
+          {errors.jobSalaryPeriod && <p className="error-message">{errors.jobSalaryPeriod}</p>}
+        </div>
+
+        <div className="form-div">
+          <Form.Label className="form-input-button form-field d-block">
+            Position type *
+          </Form.Label>
+          {jobPositionType.map((position) => (
+            <Button
+              key={position}
+              className={`form-input-button-type ${
+                formData.jobPositionType === position ? "selected" : ""
+              }`}
+              onClick={() => {
+                setFormData({ ...formData, jobPositionType : position});
+                // setSelectedButton(fuelData.name); // Update selected transmission to change the color
+              }}
+            >
+              {position}
+            </Button>
+          ))}
+          {errors.jobPositionType && <p className="error-message">{errors.jobPositionType}</p>}
+        </div>
+
+        <div className="form-div">
+          <Form.Label>Salary From *</Form.Label>
+          <Form.Control
+            className="form-field"
+            type="number"
+            name="jobSalaryFrom"
+            placeholder="Enter minimum salary"
+            value={formData.jobSalaryFrom}
+            onChange={(e) =>
+              setFormData({ ...formData, jobSalaryFrom: e.target.value })
+            }
+          />
+          
+          {errors.jobSalaryFrom && (
+            <p className="error-message">{errors.jobSalaryFrom}</p>
+          )}
+        </div>
+
+        <div className="form-div">
+          <Form.Label>Salary To *</Form.Label>
+          <Form.Control
+            className="form-field"
+            type="number"
+            name="jobSalaryTo"
+            placeholder="Enter maximum salary"
+            value={formData.jobSalaryTo}
+            onChange={(e) =>
+              setFormData({ ...formData, jobSalaryTo: e.target.value })
+            }
+          />
+          
+          {errors.jobSalaryTo && (
+            <p className="error-message">{errors.jobSalaryTo}</p>
+          )}
+        </div>
+
+        <div className="form-div">
+          <Form.Label>Ad title *</Form.Label>
+          <Form.Control
+            className="form-field"
+            type="text"
+            name="jobTitle"
+            placeholder="Enter ad title"
+            value={formData.jobTitle}
+            onChange={(e) =>
+              setFormData({ ...formData, jobTitle: e.target.value })
+            }
+          />
+          <span className="form-description">
+            Mention the key features of your item (e.g. brand, model, age, type)
+          </span>
+          {errors.jobTitle && (
+            <p className="error-message">{errors.jobTitle}</p>
+          )}
+        </div>
+
+        <div className="form-div">
+          <Form.Label>Description *</Form.Label>
+          <Form.Control
+            className="form-field"
+            as="textarea"
+            rows={4}
+            name="jobDescription"
+            placeholder="Enter description"
+            value={formData.jobDescription}
+            onChange={(e) =>
+              setFormData({ ...formData, jobDescription: e.target.value })
+            }
+          />
+          <span className="form-description">
+            Include condition, features and reason for selling
+          </span>
+          {errors.jobDescription && (
+            <p className="error-message">{errors.jobDescription}</p>
+          )}
+        </div>
+
+        <hr></hr>
+
+        
+
+        <div className="form-div">
+          <h4>UPLOAD UP TO 20 PHOTOS {`${100 / selectedFiles.length}px`}</h4>
+          <Form.Group controlId="formjobPhotos">
+            <Form.Label
+              style={{
+                border: "1px solid",
+                width: "150px",
+                height: "150px",
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              {previewUrls.map((url, index) => (
+                <img
+                  alt={`Preview ${index + 1}`}
+                  className="photo-thumbnail1"
+                  key={index}
+                  src={url}
+                  width={`${120 / previewUrls.length}px`}
+                  height={`${120 / selectedFiles.length}px`}
+                  style={{ margin: "10px", border: "1px solid" }}
+                />
+              ))}
+              {previewUrls.length === 0 && (
+                <FaCamera
+                  style={{ width: "50px", height: "50px", margin: "50px" }}
+                />
+              )}
+            </Form.Label>
+            <Form.Control
+              type="file"
+              multiple
+              accept="image/*"
+              className="d-none"
+              name="jobPhotos"
+              onChange={handleFileChange}
+            />
+          </Form.Group>
+          {errors.jobPhotos && (
+            <p className="error-message">{errors.jobPhotos}</p>
+          )}
+        </div>
+
+        {/* <div className="form-div">
+          <h4>UPLOAD UP TO 20 PHOTOS</h4>
+          <Form.Group controlId="formjobPhotos">
+            <Form.Label
+              style={{
+                border: "1px solid",
+                width: "150px",
+                height: "150px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              {previewUrls.map((url, index) => (
+                <img
+                  alt={`Preview ${index + 1}`}
+                  className="photo-thumbnail1"
+                  key={index}
+                  src={url}
+                  width="100px"
+                  height="100px"
+                  style={{ margin: "10px", border: "1px solid" }}
+                />
+              ))}
+              {previewUrls.length === 0 && (
+                <FaCamera
+                  style={{ width: "50px", height: "50px", margin: "50px" }}
+                />
+              )}
+            </Form.Label>
+            <Form.Control
+              type="file"
+              multiple
+              accept="image/*"
+              className="d-none"
+              name="jobPhotos"
+              onChange={handleFileChange}
+            />
+          </Form.Group>
+        </div> */}
+
+        <hr />
+
+        <div className="form-div">
+          <h4>CONFIRM YOUR LOCATION</h4>
+          <Form.Label>State *</Form.Label>
+          <Form.Control
+            as="select"
+            className="form-field"
+            onChange={(e) =>
+              setFormData({ ...formData, jobState: e.target.value })
+            }
+          >
+            <option value="">---Select States---</option>
+            {states.map((state) => (
+              <option value={state.state_name} key={state.id}>
+                {state.state_name}
+              </option>
+            ))}
+          </Form.Control>
+        </div>
+        {errors.jobState && <p className="error-message">{errors.jobState}</p>}
+        <hr />
+
+        <div className="form-div">
+          <h4>REVIEW YOUR DETAILS</h4>
+          <Row>
+            <Col sd={2} md={2} lg={2}>
+              <Form.Group controlId="formProfileImage">
+                <Form.Label
+                  style={{
+                    position: "relative",
+                    width: "100px",
+                    height: "100px",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <img
+                    src={selectedImage || olxImage} // Display the uploaded image or the default one
+                    width="100px"
+                    height="100px"
+                    style={{ zIndex: 1 }}
+                    alt="Upload"
+                  />
+                  <TbCameraPlus
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      position: "absolute",
+                      zIndex: 2,
+                      top: "72px", // Adjust positioning as necessary
+                      left: "40px",
+                      color: "white",
+                    }}
+                  />
+
+                  <Form.Control
+                    type="file"
+                    accept="image/*"
+                    className="d-none"
+                    onChange={handleImageUpload}
+                  />
+                </Form.Label>
+              </Form.Group>
+            </Col>
+            <Col sd={4} md={4} lg={4}>
+              <div>
+                <Form.Label>Username</Form.Label>
+                <Form.Control
+                  type="text"
+                  className="form-input-button"
+                  name="username"
+                  value={profileDetails.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  // onChange={(event) => {
+                  //   setUserName(event.target.value);
+                  // }}
+                />
+              </div>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col sd={3} md={3} lg={3}>
+            <Form.Label>Your email id:</Form.Label>
+              {errors.profileDetails}
+            </Col>
+            <Col sd={3} md={3} lg={3}>
+              {profileDetails.email && 
+              // <p >{profileDetails.email}</p>
+              <Form.Control
+                  type="email"
+                  className="form-input-button"
+                  name="email"
+                  value={profileDetails.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  // onChange={(event) => {
+                  //   setUserName(event.target.value);
+                  // }}
+                />}
+              <p className="error-message">{errors.profileDetails}</p>
+            </Col>
+          </Row>
+        </div>
+
+        {/* <div className="form-div">
+          <h4>REVIEW YOUR DETAILS</h4>
+          <Row>
+            <Col sd={2} md={2} lg={2}>
+              <Form.Group controlId="formProfileImage">
+                <Form.Label
+                  style={{
+                    position: "relative",
+                    width: "100px",
+                    height: "100px",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <img
+                    src={selectedImage || olxImage}
+                    width="100px"
+                    height="100px"
+                    alt="Profile"
+                    style={{ zIndex: 1 }}
+                  />
+                  <TbCameraPlus
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      position: "absolute",
+                      zIndex: 2,
+                      top: "72px",
+                      left: "40px",
+                      color: "white",
+                    }}
+                  />
+                  <Form.Control
+                    type="file"
+                    accept="image/*"
+                    className="d-none"
+                    onChange={handleImageUpload}
+                  />
+                </Form.Label>
+              </Form.Group>
+            </Col>
+
+            <Col sd={4} md={4} lg={4}>
+              <div>
+                <Form.Label>Username</Form.Label>
+                <Form.Control
+                  type="text"
+                  className="form-input-button"
+                  name="username"
+                  value={profileDetails.username}
+                />
+              </div>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col sd={3} md={3} lg={3}>
+              <p>Your email id: </p>
+            </Col>
+            <Col sd={3} md={3} lg={3}>
+              {profileDetails.email && <p>{profileDetails.email}</p>}
+            </Col>
+          </Row>
+        </div> */}
+        <hr />
+        <Button
+          className="form-post-button"
+          type="submit"
+          style={{
+            // backgroundColor: "#D8DFE0",
+            border: "none",
+            // color: "#7F9799",
+            backgroundColor: isSubmit ? "#4CAF50" : "#D8DFE0",
+            color: isSubmit ? "#D8DFE0" : "#4CAF50",
+          }}
+        >
+          Post now
+        </Button>
+        <h1>{selectedImage || olxImage }</h1>
+      </form>
+    </>
+  );
+};
+
+export default Jobs;
